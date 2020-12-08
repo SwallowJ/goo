@@ -62,15 +62,40 @@ func New(logger logger) *Engine {
 }
 
 //SetServer 设置server属性
-func (engine *Engine) SetServer(server *http.Server) {
+func (engine *Engine) SetServer(server *http.Server) *Engine {
 	engine.server = server
+	return engine
 }
 
-//Shutdown 关闭服务
-func (engine *Engine) Shutdown(ctx context.Context) error {
-	// engine.server.ConnState ==
-	// engine.server
-	return engine.server.Shutdown(ctx)
+//SetContext 设置上下文
+func (engine *Engine) SetContext(ctx context.Context, wg *sync.WaitGroup) *Engine {
+	engine.ctx = ctx
+	engine.wg = wg
+
+	return engine
+}
+
+//AutoShutdown 优雅关闭服务;
+//必须要先调用 SetContext;
+//nums: 关闭服务器超时时间/s;
+func (engine *Engine) AutoShutdown(nums int) *Engine {
+	if engine.ctx == nil || engine.wg == nil {
+		engine.logger.Fatal("需要先调用方法 SetContext")
+	}
+
+	engine.wg.Add(1)
+	go func() {
+		defer engine.wg.Done()
+		<-engine.ctx.Done()
+		c, cancel := context.WithTimeout(context.Background(), time.Duration(nums)*time.Second)
+		defer cancel()
+
+		engine.logger.Info("等待服务器关闭...")
+		if err := engine.server.Shutdown(c); err != nil {
+			engine.logger.Error(err)
+		}
+	}()
+	return engine
 }
 
 //SetFuncMap SetFuncMap
@@ -148,9 +173,7 @@ func (group *RouterGroup) Request(Request, pattern string, handler HandlerFunc) 
 }
 
 // Run defines the method to start a http server
-func (engine *Engine) Run(ctx context.Context, wg *sync.WaitGroup, addr string) error {
-	engine.ctx = ctx
-	engine.wg = wg
+func (engine *Engine) Run(addr string) error {
 	engine.server.Addr = addr
 	engine.server.Handler = engine
 
@@ -160,7 +183,6 @@ func (engine *Engine) Run(ctx context.Context, wg *sync.WaitGroup, addr string) 
 	} else {
 		engine.logger.Info("服务器已启动", addr)
 	}
-
 	return err
 }
 
