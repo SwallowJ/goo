@@ -47,8 +47,7 @@ type Engine struct {
 
 // New is the constructor of goo.Engine
 func New(logger logger) *Engine {
-
-	engine := &Engine{router: newRouter(), logger: nil}
+	engine := &Engine{router: newRouter(), logger: logger}
 	engine.server = &http.Server{
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      300 * time.Second,
@@ -67,15 +66,14 @@ func (engine *Engine) SetServer(server *http.Server) *Engine {
 	return engine
 }
 
-//AutoShutdown 优雅关闭服务;
-//必须要先调用 SetContext;
+//SetContext 优雅关闭服务;
 //nums: 关闭服务器超时时间/s;
-func (engine *Engine) AutoShutdown(ctx context.Context, wg *sync.WaitGroup, nums int) *Engine {
+func (engine *Engine) SetContext(ctx context.Context, wg *sync.WaitGroup, nums int) *Engine {
+	if engine.ctx == nil || engine.wg == nil {
+		engine.logger.Fatal("需要先调用方法 SetContext")
+	}
 
-	engine.ctx = ctx
-	engine.wg = wg
-
-	wg.Add(1)
+	engine.wg.Add(1)
 	go func() {
 		defer wg.Done()
 		<-ctx.Done()
@@ -169,13 +167,8 @@ func (engine *Engine) Run(addr string) error {
 	engine.server.Addr = addr
 	engine.server.Handler = engine
 
-	err := engine.server.ListenAndServe()
-	if err != nil {
-		engine.logger.Fatal(err)
-	} else {
-		engine.logger.Info("服务器已启动", addr)
-	}
-	return err
+	engine.logger.Info("服务器已启动", addr)
+	return engine.server.ListenAndServe()
 }
 
 //Use add middlewares
