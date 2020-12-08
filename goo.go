@@ -152,7 +152,11 @@ func (engine *Engine) Run(addr string) error {
 	if engine.logger != nil {
 		engine.logger.Info("Web Server is Start: ", addr)
 	}
-	return http.ListenAndServe(addr, engine)
+
+	engine.server.Addr = addr
+	engine.server.Handler = engine
+
+	return engine.server.ListenAndServe()
 }
 
 //Use add middlewares
