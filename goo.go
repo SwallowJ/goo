@@ -69,6 +69,10 @@ func (engine *Engine) SetServer(server *http.Server) *Engine {
 //SetContext 优雅关闭服务;
 //nums: 关闭服务器超时时间/s;
 func (engine *Engine) SetContext(ctx context.Context, wg *sync.WaitGroup, nums int) *Engine {
+
+	engine.ctx = ctx
+	engine.wg = wg
+
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
