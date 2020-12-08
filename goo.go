@@ -1,10 +1,12 @@
 package goo
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"path"
 	"strings"
+	"time"
 )
 
 type logger interface {
@@ -36,15 +38,33 @@ type Engine struct {
 	htmlTemplates *template.Template //html render
 	funcMap       template.FuncMap   //html render
 	logger        logger
+	server        *http.Server
 }
 
-// New is the constructor of gee.Engine
+// New is the constructor of goo.Engine
 func New() *Engine {
+
 	engine := &Engine{router: newRouter(), logger: nil}
+	engine.server = &http.Server{
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      300 * time.Second,
+		IdleTimeout:       300 * time.Second,
+		MaxHeaderBytes:    1024 << 10,
+	}
 	engine.RouterGroup = &RouterGroup{engine: engine}
 	engine.groups = []*RouterGroup{engine.RouterGroup}
 	engine.Use(Recovery(&engine.logger))
 	return engine
+}
+
+//SetServer 设置server属性
+func (engine *Engine) SetServer(server *http.Server) {
+	engine.server = server
+}
+
+//Shutdown 关闭服务
+func (engine *Engine) Shutdown(ctx context.Context) error {
+	return engine.server.Shutdown(ctx)
 }
 
 //SetLogger 设置日志logger
