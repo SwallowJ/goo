@@ -46,8 +46,8 @@ type Engine struct {
 }
 
 // New is the constructor of goo.Engine
-func New(logger logger) *Engine {
-	engine := &Engine{router: newRouter(), logger: logger}
+func New() *Engine {
+	engine := &Engine{router: newRouter(), logger: nil}
 	engine.server = &http.Server{
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      300 * time.Second,
@@ -56,7 +56,13 @@ func New(logger logger) *Engine {
 	}
 	engine.RouterGroup = &RouterGroup{engine: engine}
 	engine.groups = []*RouterGroup{engine.RouterGroup}
-	engine.Use(Recovery(&logger))
+	engine.Use(Recovery(&engine.logger))
+	return engine
+}
+
+//SetLogger 设置日志logger
+func (engine *Engine) SetLogger(logger logger) *Engine {
+	engine.logger = logger
 	return engine
 }
 
