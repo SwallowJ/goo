@@ -67,26 +67,18 @@ func (engine *Engine) SetServer(server *http.Server) *Engine {
 	return engine
 }
 
-//SetContext 设置上下文
-func (engine *Engine) SetContext(ctx context.Context, wg *sync.WaitGroup) *Engine {
-	engine.ctx = ctx
-	engine.wg = wg
-
-	return engine
-}
-
 //AutoShutdown 优雅关闭服务;
 //必须要先调用 SetContext;
 //nums: 关闭服务器超时时间/s;
-func (engine *Engine) AutoShutdown(nums int) *Engine {
-	if engine.ctx == nil || engine.wg == nil {
-		engine.logger.Fatal("需要先调用方法 SetContext")
-	}
+func (engine *Engine) AutoShutdown(ctx context.Context, wg *sync.WaitGroup, nums int) *Engine {
 
-	engine.wg.Add(1)
+	engine.ctx = ctx
+	engine.wg = wg
+
+	wg.Add(1)
 	go func() {
-		defer engine.wg.Done()
-		<-engine.ctx.Done()
+		defer wg.Done()
+		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), time.Duration(nums)*time.Second)
 		defer cancel()
 
