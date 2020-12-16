@@ -26,6 +26,7 @@ type RouterGroup struct {
 	middlewares []HandlerFunc
 	parent      *RouterGroup
 	engine      *Engine
+	cors        bool
 }
 
 // HandlerFunc defines the request handler used by goo
@@ -102,6 +103,12 @@ func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
 //LoadHTMLGlob LoadHTMLGlob
 func (engine *Engine) LoadHTMLGlob(pattern string) {
 	engine.htmlTemplates = template.Must(template.New("").Funcs(engine.funcMap).ParseGlob(pattern))
+}
+
+//AllowCors 允许跨域
+func (group *RouterGroup) AllowCors() *RouterGroup {
+	group.cors = true
+	return group
 }
 
 func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileSystem) HandlerFunc {
@@ -184,15 +191,33 @@ func (group *RouterGroup) Use(middlewares ...HandlerFunc) {
 
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	engine.logger.Info(req.Method, req.URL.Path)
+
+	c := newContext(w, req)
+	c.engine = engine
 	var middlewares []HandlerFunc
+
 	for _, group := range engine.groups {
 		if strings.HasPrefix(req.URL.Path, group.prefix) {
+			if group.cors == true {
+				if req.Method == "OPTIONS" {
+					corsHandle(c)
+					return
+				}
+				middlewares = append(middlewares, corsHandle)
+			}
 			middlewares = append(middlewares, group.middlewares...)
 		}
 	}
 
-	c := newContext(w, req)
 	c.handlers = middlewares
-	c.engine = engine
 	engine.router.handle(c)
+}
+
+func corsHandle(c *Context) {
+	c.SetHeader("Access-Control-Allow-Methods", "*")
+	c.SetHeader("Access-Control-Allow-Origin", "*")
+	c.SetHeader("Access-Control-Allow-Credentials", "true")
+	c.SetHeader("Access-Control-Allow-Headers", "*")
+
+	c.String(http.StatusOK, "")
 }
