@@ -1,6 +1,7 @@
 package goo
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,6 +37,21 @@ func newContext(w http.ResponseWriter, req *http.Request) *Context {
 		Writer: w,
 		index:  -1,
 	}
+}
+
+//AddWait 添加groutine 计数
+func (c *Context) AddWait(num int) {
+	c.engine.wg.Add(num)
+}
+
+//Down goroutine 执行结束
+func (c *Context) Down() {
+	c.engine.wg.Done()
+}
+
+//GetContext 获取上下文
+func (c *Context) GetContext() context.Context {
+	return c.engine.ctx
 }
 
 //Next middleWare

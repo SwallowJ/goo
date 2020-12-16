@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ type RouterGroup struct {
 	middlewares []HandlerFunc
 	parent      *RouterGroup
 	engine      *Engine
+	cors        bool
 }
 
 // HandlerFunc defines the request handler used by goo
@@ -39,11 +41,13 @@ type Engine struct {
 	funcMap       template.FuncMap   //html render
 	logger        logger
 	server        *http.Server
+
+	ctx context.Context //ctx 上下文
+	wg  *sync.WaitGroup //wg 计数君
 }
 
 // New is the constructor of goo.Engine
 func New() *Engine {
-
 	engine := &Engine{router: newRouter(), logger: nil}
 	engine.server = &http.Server{
 		ReadHeaderTimeout: 10 * time.Second,
@@ -57,19 +61,38 @@ func New() *Engine {
 	return engine
 }
 
-//SetServer 设置server属性
-func (engine *Engine) SetServer(server *http.Server) {
-	engine.server = server
-}
-
-//Shutdown 关闭服务
-func (engine *Engine) Shutdown(ctx context.Context) error {
-	return engine.server.Shutdown(ctx)
-}
-
 //SetLogger 设置日志logger
-func (engine *Engine) SetLogger(logger logger) {
+func (engine *Engine) SetLogger(logger logger) *Engine {
 	engine.logger = logger
+	return engine
+}
+
+//SetServer 设置server属性
+func (engine *Engine) SetServer(server *http.Server) *Engine {
+	engine.server = server
+	return engine
+}
+
+//SetContext 优雅关闭服务;
+//nums: 关闭服务器超时时间/s;
+func (engine *Engine) SetContext(ctx context.Context, wg *sync.WaitGroup, nums int) *Engine {
+
+	engine.ctx = ctx
+	engine.wg = wg
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+		c, cancel := context.WithTimeout(context.Background(), time.Duration(nums)*time.Second)
+		defer cancel()
+
+		engine.logger.Info("等待服务器关闭...")
+		if err := engine.server.Shutdown(c); err != nil {
+			engine.logger.Error(err)
+		}
+	}()
+	return engine
 }
 
 //SetFuncMap SetFuncMap
@@ -80,6 +103,12 @@ func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
 //LoadHTMLGlob LoadHTMLGlob
 func (engine *Engine) LoadHTMLGlob(pattern string) {
 	engine.htmlTemplates = template.Must(template.New("").Funcs(engine.funcMap).ParseGlob(pattern))
+}
+
+//AllowCors 允许跨域
+func (group *RouterGroup) AllowCors() *RouterGroup {
+	group.cors = true
+	return group
 }
 
 func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileSystem) HandlerFunc {
@@ -118,7 +147,6 @@ func (group *RouterGroup) Group(prefix string) *RouterGroup {
 
 func (group *RouterGroup) addRoute(method string, comp string, handler HandlerFunc) {
 	pattern := group.prefix + comp
-	// log.Printf("Route %4s - %s", method, pattern)
 	group.engine.router.addRoute(method, pattern, handler)
 }
 
@@ -149,13 +177,10 @@ func (group *RouterGroup) Request(Request, pattern string, handler HandlerFunc) 
 
 // Run defines the method to start a http server
 func (engine *Engine) Run(addr string) error {
-	if engine.logger != nil {
-		engine.logger.Info("Web Server is Start: ", addr)
-	}
-
 	engine.server.Addr = addr
 	engine.server.Handler = engine
 
+	engine.logger.Info("服务器已启动", addr)
 	return engine.server.ListenAndServe()
 }
 
@@ -165,18 +190,38 @@ func (group *RouterGroup) Use(middlewares ...HandlerFunc) {
 }
 
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	if engine.logger != nil {
-		engine.logger.Info(req.Method, req.URL.Path)
-	}
+	engine.logger.Info(req.Method, req.URL.Path)
+
+	c := newContext(w, req)
+	c.engine = engine
 	var middlewares []HandlerFunc
+
 	for _, group := range engine.groups {
 		if strings.HasPrefix(req.URL.Path, group.prefix) {
+			if group.cors == true {
+				if req.Method == "OPTIONS" {
+					handlerOptions(c)
+					return
+				}
+				middlewares = append(middlewares, corsHandle)
+			}
 			middlewares = append(middlewares, group.middlewares...)
 		}
 	}
 
-	c := newContext(w, req)
 	c.handlers = middlewares
-	c.engine = engine
 	engine.router.handle(c)
+}
+
+func corsHandle(c *Context) {
+	c.SetHeader("Access-Control-Allow-Origin", "*")
+	c.SetHeader("Access-Control-Allow-Credentials", "true")
+
+}
+
+func handlerOptions(c *Context) {
+	c.SetHeader("Access-Control-Allow-Methods", "*")
+	c.SetHeader("Access-Control-Allow-Origin", "*")
+	c.SetHeader("Access-Control-Allow-Headers", "*")
+	c.String(http.StatusOK, "")
 }
