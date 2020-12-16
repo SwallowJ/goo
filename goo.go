@@ -200,7 +200,7 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, group.prefix) {
 			if group.cors == true {
 				if req.Method == "OPTIONS" {
-					corsHandle(c)
+					handlerOptions(c)
 					return
 				}
 				middlewares = append(middlewares, corsHandle)
@@ -214,10 +214,14 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func corsHandle(c *Context) {
-	c.SetHeader("Access-Control-Allow-Methods", "*")
 	c.SetHeader("Access-Control-Allow-Origin", "*")
 	c.SetHeader("Access-Control-Allow-Credentials", "true")
-	c.SetHeader("Access-Control-Allow-Headers", "*")
 
+}
+
+func handlerOptions(c *Context) {
+	c.SetHeader("Access-Control-Allow-Methods", "*")
+	c.SetHeader("Access-Control-Allow-Origin", "*")
+	c.SetHeader("Access-Control-Allow-Headers", "*")
 	c.String(http.StatusOK, "")
 }
